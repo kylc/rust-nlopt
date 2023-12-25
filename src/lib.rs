@@ -148,7 +148,12 @@ extern "C" fn function_raw_callback<F: ObjFn<T>, T>(
 
     // recover FunctionCfg object from supplied params and call
     let f = unsafe { &mut *(params as *mut FunctionCfg<F, T>) };
-    (f.objective_fn)(argument, gradient, &mut f.user_data)
+
+    let result = (f.objective_fn)(argument, gradient, &mut f.user_data);
+    result.unwrap_or_else(|| unsafe {
+        sys::nlopt_force_stop(f.nloptc_obj);
+        0.0
+    })
 }
 
 extern "C" fn constraint_raw_callback<F: ObjFn<T>, T>(
@@ -166,7 +171,11 @@ extern "C" fn constraint_raw_callback<F: ObjFn<T>, T>(
     } else {
         Some(unsafe { slice::from_raw_parts_mut(g, n as usize) })
     };
-    (f.objective_fn)(argument, gradient, &mut f.user_data)
+    let result = (f.objective_fn)(argument, gradient, &mut f.user_data);
+    result.unwrap_or_else(|| unsafe {
+        sys::nlopt_force_stop(f.nloptc_obj);
+        0.0
+    })
 }
 
 extern "C" fn mfunction_raw_callback<F: MObjFn<T>, T>(
@@ -197,12 +206,13 @@ extern "C" fn mfunction_raw_callback<F: MObjFn<T>, T>(
 /// `Some(x)`, the user is required to provide a gradient, otherwise the optimization will
 /// probabely fail.
 /// * `user_data` - user defined data
-pub trait ObjFn<U>: Fn(&[f64], Option<&mut [f64]>, &mut U) -> f64 {}
+pub trait ObjFn<U>: Fn(&[f64], Option<&mut [f64]>, &mut U) -> Option<f64> {}
 
-impl<T, U> ObjFn<U> for T where T: Fn(&[f64], Option<&mut [f64]>, &mut U) -> f64 {}
+impl<T, U> ObjFn<U> for T where T: Fn(&[f64], Option<&mut [f64]>, &mut U) -> Option<f64> {}
 
 /// Packs an objective function with a user defined parameter set of type `T`.
 struct FunctionCfg<F: ObjFn<T>, T> {
+    pub nloptc_obj: *mut nlopt_sys::nlopt_opt_s,
     pub objective_fn: F,
     pub user_data: T,
 }
@@ -285,6 +295,7 @@ impl<F: ObjFn<T>, T> Nlopt<F, T> {
         // (This is pretty unsafe but works).
         // `into_raw` will leak the boxed object
         let func_cfg = Box::new(FunctionCfg {
+            nloptc_obj,
             objective_fn,
             user_data, // move user_data into FunctionCfg
         });
@@ -444,6 +455,7 @@ impl<F: ObjFn<T>, T> Nlopt<F, T> {
         is_equality: bool,
     ) -> OptResult {
         let constraint = ConstraintCfg {
+            nloptc_obj: self.nloptc_obj.0,
             objective_fn: constraint,
             user_data,
         };
@@ -714,7 +726,7 @@ impl<F: ObjFn<T>, T> Nlopt<F, T> {
     }
 
     pub fn get_local_optimizer(&mut self, algorithm: Algorithm) -> Nlopt<impl ObjFn<()>, ()> {
-        fn stub_opt(_: &[f64], _: Option<&mut [f64]>, _: &mut ()) -> f64 {
+        fn stub_opt(_: &[f64], _: Option<&mut [f64]>, _: &mut ()) -> Option<f64> {
             unreachable!()
         }
         // create a new object based on former one
