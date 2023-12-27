@@ -203,15 +203,17 @@ static void plis_(int *nf, int *nb, double *x, int *
     if (*xmax <= 0.) {
 	*xmax = 1e16;
     }
-    if (*tolx <= 0.) {
-	*tolx = 1e-16;
-    }
-    if (*tolf <= 0.) {
-	*tolf = 1e-14;
-    }
-    if (*tolg <= 0.) {
-	 *tolg = 1e-8; /* SGJ: was 1e-6, but this sometimes stops too soon */
-    }
+    // kylc: disable there tests which circumvent values passed in from the
+    // application.
+	// if (*tolx <= 0.) {
+	// *tolx = 1e-16;
+    // }
+    // if (*tolf <= 0.) {
+	// *tolf = 1e-14;
+    // }
+    // if (*tolg <= 0.) {
+	//  *tolg = 1e-8; /* SGJ: was 1e-6, but this sometimes stops too soon */
+    // }
 #if 0
     /* removed by SGJ: this check prevented us from using minf_max <= 0,
        which doesn't make sense.  Instead, if you don't want to have a
